@@ -62,8 +62,9 @@ Run("State (dropdown)", () =>
     var c = finder.Best("select",
         pos: new[] { "state", "province", "region" },
         neg: new[] { "country", "city", "zip", "postal" });
-    var sel = new SelectElement(c.El);
-    var options = sel.Options.Select(o => o.Text.Trim()).ToList();
+    var js = (IJavaScriptExecutor)driver;
+    var optEls = c.El.FindElements(By.TagName("option")).ToList();
+    var options = optEls.Select(o => o.Text.Trim()).ToList();
     string pick;
     if (state != null)
     {
@@ -76,8 +77,13 @@ Run("State (dropdown)", () =>
         pick = options.FirstOrDefault(o => o.Length > 0 && !Regex.IsMatch(o, @"select|choose|^-+", RegexOptions.IgnoreCase))
             ?? throw new Exception("No selectable options");
     }
-    sel.SelectByText(pick);
-    var got = sel.SelectedOption.Text.Trim();
+    var target = optEls.First(o => o.Text.Trim() == pick);
+    js.ExecuteScript(
+        "var s=arguments[0],o=arguments[1];o.selected=true;s.value=o.value;" +
+        "s.dispatchEvent(new Event('input',{bubbles:true}));" +
+        "s.dispatchEvent(new Event('change',{bubbles:true}));", c.El, target);
+    var got = ((string)js.ExecuteScript(
+        "var s=arguments[0];return s.options[s.selectedIndex].text;", c.El)).Trim();
     if (got != pick) throw new Exception($"Expected '{pick}', got '{got}'");
 });
 
@@ -85,5 +91,6 @@ Console.WriteLine($"\nURL: {url}");
 foreach (var r in results) Console.WriteLine($"[{(r.Ok ? "PASS" : "FAIL")}] {r.Name} - {r.Detail}");
 bool all = results.All(r => r.Ok);
 Console.WriteLine(all ? "\nOVERALL: PASS" : "\nOVERALL: FAIL");
+if (Flag("--keep-open")) { Console.WriteLine("Press Enter to close the browser..."); Console.ReadLine(); }
 driver.Quit();
 return all ? 0 : 1;
